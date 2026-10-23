@@ -7,6 +7,11 @@ const messageSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'Message must have a sender'],
     },
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workspace',
+      index: true,
+    },
     channelType: {
       type: String,
       enum: ['department', 'project'],

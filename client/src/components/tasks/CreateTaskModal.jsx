@@ -516,19 +516,22 @@ export const CreateTaskModal = ({
                   }
                   allowClear
                   showSearch
-                  optionFilterProp="children"
+                  optionFilterProp="filterText"
+                  optionLabelProp="label"
                 >
-                  {finalSelectableUsers.map((u) => {
-                    const deptName =
-                      u.departmentId?.name ||
-                      (typeof u.department === 'string' ? u.department : '') ||
-                      'Nhân viên';
-                    return (
-                      <Select.Option key={u._id} value={u._id}>
-                        {u.name} ({deptName})
-                      </Select.Option>
-                    );
-                  })}
+                  {finalSelectableUsers.map((u) => (
+                    <Select.Option
+                      key={u._id}
+                      value={u._id}
+                      label={u.name}
+                      filterText={`${u.name} ${u.email}`}
+                    >
+                      <div className="flex items-center justify-between py-0.5">
+                        <span className="font-medium text-slate-800">{u.name}</span>
+                        <span className="text-xs text-slate-400">{u.email}</span>
+                      </div>
+                    </Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -547,19 +550,22 @@ export const CreateTaskModal = ({
                   placeholder="-- Chọn người duyệt (mặc định PM dự án) --"
                   allowClear
                   showSearch
-                  optionFilterProp="children"
+                  optionFilterProp="filterText"
+                  optionLabelProp="label"
                 >
-                  {users.map((u) => {
-                    const deptName =
-                      u.departmentId?.name ||
-                      (typeof u.department === 'string' ? u.department : '') ||
-                      '';
-                    return (
-                      <Select.Option key={u._id} value={u._id}>
-                        ⭐ {u.name} {deptName ? `(${deptName})` : ''}
-                      </Select.Option>
-                    );
-                  })}
+                  {users.map((u) => (
+                    <Select.Option
+                      key={u._id}
+                      value={u._id}
+                      label={`⭐ ${u.name}`}
+                      filterText={`${u.name} ${u.email}`}
+                    >
+                      <div className="flex items-center justify-between py-0.5">
+                        <span className="font-medium text-slate-800">⭐ {u.name}</span>
+                        <span className="text-xs text-slate-400">{u.email}</span>
+                      </div>
+                    </Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>

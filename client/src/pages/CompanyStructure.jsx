@@ -110,7 +110,7 @@ export const CompanyStructure = () => {
     return () => {
       socket.off('department:changed', handleDeptChanged);
     };
-  }, []);
+  }, [currentWorkspace?._id]);
 
   const openCreateModal = (parent = null) => {
     setEditingDept(null);
@@ -726,10 +726,24 @@ export const CompanyStructure = () => {
             name="head"
             tooltip="Người chịu trách nhiệm theo dõi và quản lý công việc của phòng ban"
           >
-            <Select placeholder="-- Chọn người phụ trách --" allowClear>
+            <Select
+              placeholder="-- Chọn người phụ trách --"
+              allowClear
+              showSearch
+              optionFilterProp="filterText"
+              optionLabelProp="label"
+            >
               {users.map((u) => (
-                <Select.Option key={u._id} value={u._id}>
-                  {u.name} ({u.email}) - {u.role}
+                <Select.Option
+                  key={u._id}
+                  value={u._id}
+                  label={u.name}
+                  filterText={`${u.name} ${u.email}`}
+                >
+                  <div className="flex items-center justify-between py-0.5">
+                    <span className="font-medium text-slate-800">{u.name}</span>
+                    <span className="text-xs text-slate-400">{u.email}</span>
+                  </div>
                 </Select.Option>
               ))}
             </Select>
@@ -744,11 +758,21 @@ export const CompanyStructure = () => {
               mode="multiple"
               placeholder="Chọn nhân viên"
               allowClear
-              optionFilterProp="children"
+              showSearch
+              optionFilterProp="filterText"
+              optionLabelProp="label"
             >
               {users.map((u) => (
-                <Select.Option key={u._id} value={u._id}>
-                  {u.name} ({u.department || 'Nhân viên'})
+                <Select.Option
+                  key={u._id}
+                  value={u._id}
+                  label={u.name}
+                  filterText={`${u.name} ${u.email}`}
+                >
+                  <div className="flex items-center justify-between py-0.5">
+                    <span className="font-medium text-slate-800">{u.name}</span>
+                    <span className="text-xs text-slate-400">{u.email}</span>
+                  </div>
                 </Select.Option>
               ))}
             </Select>

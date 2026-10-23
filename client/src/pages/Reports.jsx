@@ -106,9 +106,11 @@ export const Reports = () => {
     } finally {
       setLoading(false);
     }
-  }, [timeRange, customDates, selectedDepartment, selectedProject]);
+  }, [timeRange, customDates, selectedDepartment, selectedProject, currentWorkspace?._id]);
 
   useEffect(() => {
+    setSelectedDepartment('all');
+    setSelectedProject('all');
     fetchMetadata();
   }, [currentWorkspace?._id]);
 

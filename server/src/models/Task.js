@@ -16,6 +16,11 @@ const taskSchema = new mongoose.Schema(
       ref: 'Project',
       required: [true, 'Task must belong to a project'],
     },
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workspace',
+      index: true,
+    },
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Department',

@@ -26,6 +26,11 @@ const departmentSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workspace',
+      index: true,
+    },
     parent: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Department',

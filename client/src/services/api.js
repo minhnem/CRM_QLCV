@@ -7,13 +7,26 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to attach JWT token
+// Request interceptor to attach JWT token & active Workspace ID
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('crm_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    const currentWs = localStorage.getItem('crm_workspace');
+    if (currentWs) {
+      try {
+        const parsed = JSON.parse(currentWs);
+        if (parsed?._id) {
+          config.headers['x-workspace-id'] = parsed._id;
+        }
+      } catch (e) {
+        // ignore json parse error
+      }
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

@@ -97,6 +97,7 @@ async function handleTaskAssignmentNotification({ task, assigner, isNew = true }
       try {
         const chatMsg = await Message.create({
           sender: assignerId,
+          workspace: task.workspace || null,
           channelType: 'project',
           channelId: projectId,
           content: isNew
@@ -190,6 +191,7 @@ const sendProjectChatReviewMessage = async ({ projectId, senderId, task, action,
 
     const chatMsg = await Message.create({
       sender: senderId,
+      workspace: task.workspace || null,
       channelType: 'project',
       channelId: projectId,
       content,
@@ -214,7 +216,12 @@ const sendProjectChatReviewMessage = async ({ projectId, senderId, task, action,
 export const getTasks = async (req, res, next) => {
   try {
     const { project, status, priority, assignee, reviewer, department, search } = req.query;
+    const workspaceId = req.workspaceId || req.user.currentWorkspace;
     const query = {};
+
+    if (workspaceId) {
+      query.workspace = workspaceId;
+    }
 
     if (project) query.project = project;
     if (status) query.status = status;
@@ -237,15 +244,12 @@ export const getTasks = async (req, res, next) => {
         { creator: req.user._id },
         { reviewer: req.user._id },
       ];
-      const headDepts = await Department.find({ head: req.user._id }).select('_id');
-      if (headDepts.length > 0) {
-        ownCond.push({ department: { $in: headDepts.map((d) => d._id) } });
-      }
       query.$or = query.$or ? { $and: [query.$or, { $or: ownCond }] } : ownCond;
     } else if (req.permissionScope?.scope === 'dept') {
       const userDeptIds = [];
       if (req.user.departmentId) userDeptIds.push(req.user.departmentId);
       const userDepts = await Department.find({
+        ...(workspaceId ? { workspace: workspaceId } : {}),
         $or: [
           { members: req.user._id },
           { head: req.user._id },
@@ -286,6 +290,16 @@ export const getTaskById = async (req, res, next) => {
 
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    if (req.permissionScope?.scope === 'own') {
+      const isOwner =
+        (task.assignee && (task.assignee._id || task.assignee).toString() === req.user._id.toString()) ||
+        (task.creator && (task.creator._id || task.creator).toString() === req.user._id.toString()) ||
+        (task.reviewer && (task.reviewer._id || task.reviewer).toString() === req.user._id.toString());
+      if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền xem công việc này.' });
+      }
     }
 
     res.json({ success: true, task });
@@ -332,10 +346,13 @@ export const createTask = async (req, res, next) => {
     const lastTask = await Task.findOne({ project, status: status || 'todo' }).sort({ order: -1 });
     const nextOrder = lastTask ? (lastTask.order || 0) + 1 : 0;
 
+    const workspaceId = existingProject.workspace || req.workspaceId || req.user.currentWorkspace;
+
     const task = await Task.create({
       title,
       description,
       project,
+      workspace: workspaceId,
       department: department || null,
       assignee: assignee || null,
       reviewer: reviewer || null,
@@ -370,6 +387,7 @@ export const createTask = async (req, res, next) => {
       targetType: 'task',
       targetId: task._id.toString(),
       details: { title: task.title, project: existingProject.name },
+      workspace: workspaceId,
     });
 
     res.status(201).json({
@@ -389,6 +407,16 @@ export const updateTask = async (req, res, next) => {
     const task = await Task.findById(req.params.id);
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    if (req.permissionScope?.scope === 'own') {
+      const isOwner =
+        (task.assignee && task.assignee.toString() === req.user._id.toString()) ||
+        (task.creator && task.creator.toString() === req.user._id.toString()) ||
+        (task.reviewer && task.reviewer.toString() === req.user._id.toString());
+      if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền chỉnh sửa công việc này.' });
+      }
     }
 
     const previousAssignee = task.assignee ? task.assignee.toString() : null;
@@ -462,6 +490,16 @@ export const updateTaskStatus = async (req, res, next) => {
     const task = await Task.findById(req.params.id);
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    if (req.permissionScope?.scope === 'own') {
+      const isOwner =
+        (task.assignee && task.assignee.toString() === req.user._id.toString()) ||
+        (task.creator && task.creator.toString() === req.user._id.toString()) ||
+        (task.reviewer && task.reviewer.toString() === req.user._id.toString());
+      if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền thay đổi trạng thái công việc này.' });
+      }
     }
 
     const previousStatus = task.status;

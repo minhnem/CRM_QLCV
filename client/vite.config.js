@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   server: {
-    host: true, // Mở cổng cho mạng nội bộ LAN truy cập qua IP
+    //host: true, // Mở cổng cho mạng nội bộ LAN truy cập qua IP
     port: 5173,
     proxy: {
       '/api': {

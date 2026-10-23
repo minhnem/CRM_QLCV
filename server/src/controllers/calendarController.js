@@ -7,7 +7,7 @@ import { Contract } from '../models/Contract.js';
 export const getCalendarTasks = async (req, res, next) => {
   try {
     const { month, year, project, workspaceId } = req.query;
-    const currentWs = workspaceId || req.user.currentWorkspace;
+    const currentWs = workspaceId || req.workspaceId || req.user.currentWorkspace;
 
     const targetYear = parseInt(year) || new Date().getFullYear();
     const targetMonth = parseInt(month) || new Date().getMonth() + 1; // 1-12
@@ -22,6 +22,10 @@ export const getCalendarTasks = async (req, res, next) => {
         { startDate: { $gte: startOfMonth, $lte: endOfMonth } },
       ],
     };
+
+    if (currentWs) {
+      query.workspace = currentWs;
+    }
 
     if (project && project !== 'all') {
       query.project = project;
@@ -50,7 +54,7 @@ export const getCalendarTasks = async (req, res, next) => {
 export const getCalendarContracts = async (req, res, next) => {
   try {
     const { month, year, workspaceId, project } = req.query;
-    const currentWs = workspaceId || req.user.currentWorkspace;
+    const currentWs = workspaceId || req.workspaceId || req.user.currentWorkspace;
 
     const targetYear = parseInt(year) || new Date().getFullYear();
     const targetMonth = parseInt(month) || new Date().getMonth() + 1; // 1-12

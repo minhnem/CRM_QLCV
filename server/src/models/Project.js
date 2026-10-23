@@ -21,6 +21,11 @@ const projectSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    workspace: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Workspace',
+      index: true,
+    },
     status: {
       type: String,
       enum: ['planning', 'active', 'on_hold', 'completed', 'archived'],

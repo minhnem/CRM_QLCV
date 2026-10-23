@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Input,
@@ -34,6 +34,7 @@ import {
   FileExcelOutlined,
   FileZipOutlined,
   LoadingOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import { messageApi } from '../services/api';
 import { getSocket } from '../services/socket';
@@ -42,7 +43,7 @@ import { useAuth } from '../context/AuthContext';
 const { TextArea } = Input;
 
 export const ChannelsChat = () => {
-  const { user } = useAuth();
+  const { user, currentWorkspace } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -81,44 +82,60 @@ export const ChannelsChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Fetch all channels
-  const loadChannels = async () => {
+  // Fetch all channels for the active workspace
+  const loadChannels = useCallback(async () => {
+    setLoadingChannels(true);
     try {
       const res = await messageApi.getChannels();
       if (res.data.success) {
+        const depts = res.data.departments || [];
+        const projs = res.data.projects || [];
         setChannels({
-          departments: res.data.departments || [],
-          projects: res.data.projects || [],
+          departments: depts,
+          projects: projs,
         });
 
         // Determine active channel
         let targetChannel = null;
         if (queryId) {
           if (queryType === 'project') {
-            targetChannel = res.data.projects?.find((p) => p._id === queryId);
+            targetChannel = projs.find((p) => p._id === queryId);
           } else {
-            targetChannel = res.data.departments?.find((d) => d._id === queryId);
+            targetChannel = depts.find((d) => d._id === queryId);
           }
         }
 
-        // Fallback to first department channel if not found
+        // Fallback to first channel in this workspace
         if (!targetChannel) {
-          targetChannel =
-            res.data.departments?.[0] || res.data.projects?.[0] || null;
+          targetChannel = depts[0] || projs[0] || null;
         }
 
         if (targetChannel) {
           setActiveChannel(targetChannel);
+        } else {
+          // Khi không có kênh nào trong không gian này, xóa sạch kênh và tin nhắn cũ
+          setActiveChannel(null);
+          setMessages([]);
         }
+      } else {
+        setChannels({ departments: [], projects: [] });
+        setActiveChannel(null);
+        setMessages([]);
       }
     } catch (err) {
       console.error('Failed to load channels:', err);
+      setChannels({ departments: [], projects: [] });
+      setActiveChannel(null);
+      setMessages([]);
     } finally {
       setLoadingChannels(false);
     }
-  };
+  }, [queryId, queryType]);
 
   useEffect(() => {
+    // Xóa sạch kênh và tin nhắn đang hiển thị ngay khi đổi không gian làm việc
+    setActiveChannel(null);
+    setMessages([]);
     loadChannels();
 
     const handleDeptChanged = () => {
@@ -129,7 +146,7 @@ export const ChannelsChat = () => {
     return () => {
       socket.off('department:changed', handleDeptChanged);
     };
-  }, []);
+  }, [currentWorkspace?._id, loadChannels]);
 
   // Fetch messages when active channel changes
   const loadMessages = async (channel) => {
@@ -868,7 +885,7 @@ export const ChannelsChat = () => {
                   Chưa có Kênh Chat nào
                 </h4>
                 <p className="text-[11px] text-slate-400 leading-relaxed max-w-[220px] mx-auto">
-                  Bạn chưa được thêm vào phòng ban hoặc dự án nào để tham gia trò chuyện.
+                  Không gian làm việc này chưa có phòng ban hoặc dự án nào.
                 </p>
               </div>
             )
@@ -1430,18 +1447,34 @@ export const ChannelsChat = () => {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
             {channels.departments.length === 0 && channels.projects.length === 0 ? (
-              <div className="max-w-md mx-auto space-y-3">
+              <div className="max-w-md mx-auto space-y-4">
                 <div className="w-16 h-16 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center text-3xl mx-auto border border-blue-100 shadow-sm">
                   💬
                 </div>
-                <h3 className="font-extrabold text-slate-800 text-base">
-                  Bạn chưa tham gia Kênh Chat nào
-                </h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Tài khoản của bạn hiện chưa được phân công vào bất kỳ Phòng ban hay Dự án nào trong hệ thống. Bạn chỉ có thể nhìn thấy và tham gia trao đổi tại các kênh khi được Quản trị viên thêm vào.
-                </p>
-                <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium text-left">
-                  <span>💡 Vui lòng liên hệ Quản trị viên (Admin) để được thêm vào Phòng ban hoặc Dự án làm việc.</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base mb-1">
+                    Không gian làm việc mới chưa có Kênh Chat
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Kênh chat được tự động kích hoạt theo từng <b>Phòng Ban</b> và <b>Dự Án</b> trong Không gian làm việc <b>{currentWorkspace?.name || ''}</b>.
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <Button
+                    type="primary"
+                    icon={<ApartmentOutlined />}
+                    onClick={() => navigate('/departments')}
+                    className="font-medium text-xs"
+                  >
+                    Tạo Phòng Ban
+                  </Button>
+                  <Button
+                    icon={<ProjectOutlined />}
+                    onClick={() => navigate('/projects')}
+                    className="font-medium text-xs"
+                  >
+                    Tạo Dự Án
+                  </Button>
                 </div>
               </div>
             ) : (

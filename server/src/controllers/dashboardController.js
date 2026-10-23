@@ -1,8 +1,10 @@
 import { Task } from '../models/Task.js';
 import { Project } from '../models/Project.js';
 import { User } from '../models/User.js';
+import { Department } from '../models/Department.js';
 import { ActivityLog } from '../models/ActivityLog.js';
 import { Contract } from '../models/Contract.js';
+import { Workspace } from '../models/Workspace.js';
 import mongoose from 'mongoose';
 
 // @desc    Get dashboard metrics & statistics (Upgraded All-in-One)
@@ -11,22 +13,28 @@ import mongoose from 'mongoose';
 export const getDashboardOverview = async (req, res, next) => {
   try {
     const userId = req.user?._id;
-    const userRole = req.user?.role;
-    const isAdmin = userRole === 'admin';
-    const workspaceId = req.user?.currentWorkspace || req.headers['x-workspace-id'];
+    const workspaceId = req.workspaceId || req.user?.currentWorkspace || req.headers['x-workspace-id'];
+    const isAdmin = req.user?.role === 'admin' || req.isWorkspaceAdmin;
     const now = new Date();
     const next30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const userObjectId = userId ? new mongoose.Types.ObjectId(userId) : null;
+    const wsObjectId = workspaceId ? new mongoose.Types.ObjectId(workspaceId) : null;
 
-    const contractFilter = workspaceId ? { workspace: workspaceId } : {};
+    const wsFilter = workspaceId ? { workspace: workspaceId } : {};
+    const wsMatch = wsObjectId
+      ? { $or: [{ workspace: wsObjectId }, { workspace: workspaceId }] }
+      : {};
+    const contractFilter = wsFilter;
+    const contractMatch = wsMatch;
 
-    // Tìm danh sách ID dự án mà nhân viên có công việc được giao
+    // Tìm danh sách ID dự án mà nhân viên có công việc được giao trong không gian này
     const taskProjectIds = userObjectId
-      ? await Task.find({ assignee: userObjectId }).distinct('project')
+      ? await Task.find({ ...wsFilter, assignee: userObjectId }).distinct('project')
       : [];
 
     const myProjectCondition = userObjectId
       ? {
+          ...wsFilter,
           $or: [
             { _id: { $in: taskProjectIds } },
             { members: userObjectId },
@@ -61,27 +69,32 @@ export const getDashboardOverview = async (req, res, next) => {
       activeProjectList,
       priorityAgg,
     ] = await Promise.all([
-      Project.countDocuments(),
-      Project.countDocuments({ status: 'active' }),
-      Task.countDocuments(),
-      Task.countDocuments({ status: 'todo' }),
-      Task.countDocuments({ status: 'in_progress' }),
-      Task.countDocuments({ status: 'review' }),
-      Task.countDocuments({ status: 'done' }),
+      Project.countDocuments(wsFilter),
+      Project.countDocuments({ ...wsFilter, status: 'active' }),
+      Task.countDocuments(wsFilter),
+      Task.countDocuments({ ...wsFilter, status: 'todo' }),
+      Task.countDocuments({ ...wsFilter, status: 'in_progress' }),
+      Task.countDocuments({ ...wsFilter, status: 'review' }),
+      Task.countDocuments({ ...wsFilter, status: 'done' }),
       Task.countDocuments({
+        ...wsFilter,
         status: { $ne: 'done' },
         dueDate: { $lt: now },
       }),
       Task.countDocuments({
+        ...wsFilter,
         status: { $ne: 'done' },
         priority: 'urgent',
       }),
-      User.countDocuments({ isActive: true }),
-      ActivityLog.find()
+      workspaceId
+        ? Workspace.findById(workspaceId).then((w) => (w ? 1 + (w.members?.length || 0) : 0))
+        : User.countDocuments({ isActive: true }),
+      ActivityLog.find(wsFilter)
         .populate('user', 'name email avatar')
         .sort({ createdAt: -1 })
         .limit(7),
       Task.find({
+        ...wsFilter,
         status: { $ne: 'done' },
         dueDate: { $gte: now },
       })
@@ -90,10 +103,10 @@ export const getDashboardOverview = async (req, res, next) => {
         .sort({ dueDate: 1 })
         .limit(5),
 
-      // Tổng hợp Hợp đồng & Deals (Chỉ Admin mới có quyền xem)
+      // Tổng hợp Hợp đồng & Deals (Chỉ Admin / Quản trị viên mới xem)
       isAdmin
         ? Contract.aggregate([
-            { $match: contractFilter },
+            { $match: contractMatch },
             {
               $group: {
                 _id: null,
@@ -123,6 +136,7 @@ export const getDashboardOverview = async (req, res, next) => {
       // Công việc được giao cho tôi
       userId
         ? Task.find({
+            ...wsFilter,
             assignee: userId,
             status: { $ne: 'done' },
           })
@@ -134,6 +148,7 @@ export const getDashboardOverview = async (req, res, next) => {
       // Công việc đang chờ tôi duyệt
       userId
         ? Task.find({
+            ...wsFilter,
             status: 'review',
             $or: [{ reviewer: userId }, { creator: userId, reviewer: null }],
           })
@@ -146,7 +161,7 @@ export const getDashboardOverview = async (req, res, next) => {
       // Thống kê cá nhân
       userObjectId
         ? Task.aggregate([
-            { $match: { assignee: userObjectId } },
+            { $match: { ...wsMatch, assignee: userObjectId } },
             {
               $group: {
                 _id: null,
@@ -182,6 +197,7 @@ export const getDashboardOverview = async (req, res, next) => {
       // Số việc khẩn cấp của nhân viên
       userObjectId
         ? Task.countDocuments({
+            ...wsFilter,
             assignee: userObjectId,
             status: { $ne: 'done' },
             priority: 'urgent',
@@ -191,6 +207,7 @@ export const getDashboardOverview = async (req, res, next) => {
       // Hạn chót sắp tới của riêng nhân viên
       userObjectId
         ? Task.find({
+            ...wsFilter,
             assignee: userObjectId,
             status: { $ne: 'done' },
             dueDate: { $gte: now },
@@ -203,7 +220,7 @@ export const getDashboardOverview = async (req, res, next) => {
       // Phân bổ ưu tiên các việc của riêng nhân viên
       userObjectId
         ? Task.aggregate([
-            { $match: { assignee: userObjectId, status: { $ne: 'done' } } },
+            { $match: { ...wsMatch, assignee: userObjectId, status: { $ne: 'done' } } },
             {
               $group: {
                 _id: '$priority',
@@ -215,6 +232,7 @@ export const getDashboardOverview = async (req, res, next) => {
 
       // Dự án đang chạy để tính tiến độ (Admin xem toàn cty, Nhân viên xem các dự án mình tham gia)
       Project.find({
+        ...wsFilter,
         status: { $in: ['active', 'planning'] },
         ...(!isAdmin && myProjectCondition ? myProjectCondition : {}),
       })
@@ -226,7 +244,7 @@ export const getDashboardOverview = async (req, res, next) => {
 
       // Phân bổ độ ưu tiên
       Task.aggregate([
-        { $match: { status: { $ne: 'done' } } },
+        { $match: { ...wsMatch, status: { $ne: 'done' } } },
         {
           $group: {
             _id: '$priority',
@@ -357,8 +375,15 @@ export const getDashboardOverview = async (req, res, next) => {
 export const getEmployeeStats = async (req, res, next) => {
   try {
     const { department, project, timeRange = 'all', startDate, endDate } = req.query;
+    const workspaceId = req.workspaceId || req.user?.currentWorkspace || req.headers['x-workspace-id'];
+    const wsObjectId = workspaceId ? new mongoose.Types.ObjectId(workspaceId) : null;
 
     const taskMatch = {};
+
+    // 0. Lọc theo Không gian làm việc
+    if (wsObjectId) {
+      taskMatch.workspace = wsObjectId;
+    }
 
     // 1. Lọc theo Dự án
     if (project && project !== 'all') {
@@ -437,6 +462,21 @@ export const getEmployeeStats = async (req, res, next) => {
       },
     ];
 
+    // Lọc danh sách thành viên thuộc Không gian làm việc
+    let memberIds = null;
+    if (workspaceId) {
+      const ws = await Workspace.findById(workspaceId).select('owner members');
+      if (ws) {
+        memberIds = [ws.owner, ...(ws.members || []).map((m) => m.user)].filter(Boolean);
+      }
+    }
+
+    const userFilter = {
+      isActive: true,
+      ...(memberIds ? { _id: { $in: memberIds } } : {}),
+      ...(department && department !== 'all' ? { departmentId: department } : {}),
+    };
+
     const [aggregatedData, allTasksSummary, users] = await Promise.all([
       Task.aggregate(aggregationPipeline),
       Task.aggregate([
@@ -476,10 +516,7 @@ export const getEmployeeStats = async (req, res, next) => {
           },
         },
       ]),
-      User.find({
-        isActive: true,
-        ...(department && department !== 'all' ? { departmentId: department } : {}),
-      })
+      User.find(userFilter)
         .select('name email avatar role department departmentId')
         .populate('departmentId', 'name code color'),
     ]);

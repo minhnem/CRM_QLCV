@@ -64,8 +64,12 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const { openCreateTask } = useOutletContext() || {};
 
-  // Phân biệt quyền: Chỉ Admin mới có quyền xem số liệu toàn hệ thống & Hợp đồng
-  const isAdmin = user?.role === 'admin';
+  // Phân biệt quyền: Admin toàn hệ thống hoặc Chủ sở hữu / Quản trị viên của Không gian làm việc hiện tại
+  const isAdmin =
+    user?.role === 'admin' ||
+    Boolean(currentWorkspace?.isOwner) ||
+    currentWorkspace?.myRole === 'owner' ||
+    currentWorkspace?.myRole === 'admin';
 
   const fetchDashboard = async (isManual = false) => {
     if (isManual) setRefreshing(true);

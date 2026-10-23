@@ -1,6 +1,7 @@
 import { verifyToken } from '../config/jwt.js';
 import { User } from '../models/User.js';
 import { Role } from '../models/Role.js';
+import { Workspace } from '../models/Workspace.js';
 
 export const protect = async (req, res, next) => {
   let token;
@@ -38,6 +39,35 @@ export const protect = async (req, res, next) => {
     }
 
     req.user = currentUser;
+
+    // Xác định Không gian làm việc hiện tại (Workspace)
+    const headerWsId = req.headers['x-workspace-id'];
+    req.workspaceId = headerWsId || (currentUser.currentWorkspace ? currentUser.currentWorkspace.toString() : null);
+
+    // Xác định vai trò của người dùng trong Không gian làm việc hiện tại
+    req.isWorkspaceAdmin = currentUser.role === 'admin';
+    if (req.workspaceId) {
+      try {
+        const ws = await Workspace.findById(req.workspaceId).select('owner members');
+        if (ws) {
+          const userIdStr = currentUser._id.toString();
+          const isOwner = ws.owner && ws.owner.toString() === userIdStr;
+          const memberEntry = ws.members?.find((m) => m.user && m.user.toString() === userIdStr);
+          if (isOwner) {
+            req.workspaceRole = 'owner';
+            req.isWorkspaceAdmin = true;
+          } else if (memberEntry) {
+            req.workspaceRole = memberEntry.role || 'member';
+            if (memberEntry.role === 'admin' || memberEntry.role === 'owner') {
+              req.isWorkspaceAdmin = true;
+            }
+          }
+        }
+      } catch (wsErr) {
+        console.error('Lỗi phân tích quyền Workspace trong authMiddleware:', wsErr.message);
+      }
+    }
+
     next();
   } catch (error) {
     return res.status(401).json({
@@ -50,7 +80,14 @@ export const protect = async (req, res, next) => {
 
 export const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+    // Nếu yêu cầu admin và người dùng là admin hệ thống hoặc admin/owner của workspace này
+    if (roles.includes('admin') && req.isWorkspaceAdmin) {
+      return next();
+    }
+    if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: `User role '${req.user?.role}' is not authorized to access this resource.`,
@@ -68,8 +105,8 @@ export const checkPermission = (resource, action) => {
         return res.status(401).json({ success: false, message: 'Yêu cầu xác thực tài khoản.' });
       }
 
-      // Super Admin luôn có toàn quyền tuyệt đối
-      if (req.user.role === 'admin') {
+      // Super Admin hệ thống hoặc Chủ sở hữu / Quản trị viên của Workspace hiện tại luôn có toàn quyền
+      if (req.user.role === 'admin' || req.isWorkspaceAdmin) {
         req.permissionScope = { scope: 'all', canViewValue: true };
         return next();
       }

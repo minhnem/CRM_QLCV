@@ -125,14 +125,33 @@ export const Team = () => {
     },
     {
       title: 'Phòng ban',
-      dataIndex: 'department',
-      key: 'department',
-      render: (dept, record) => (
-        <div className="flex items-center gap-1.5 text-xs text-slate-700">
-          <BankOutlined className="text-slate-400" />
-          <span>{record.departmentId?.name || dept || 'Chung'}</span>
-        </div>
-      ),
+      dataIndex: 'departments',
+      key: 'departments',
+      render: (_, record) => {
+        const depts = record.departments || [];
+        if (depts.length === 0) {
+          return <span className="text-slate-400 text-xs italic">Chưa phân bổ</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1 items-center">
+            {depts.map((d) => (
+              <Tag
+                key={d._id}
+                style={{
+                  backgroundColor: `${d.color || '#2563eb'}15`,
+                  borderColor: d.color || '#2563eb',
+                  color: d.color || '#2563eb',
+                  fontWeight: 500,
+                  fontSize: '11px',
+                  margin: 0,
+                }}
+              >
+                {d.name} {d.isHead && '⭐'}
+              </Tag>
+            ))}
+          </div>
+        );
+      },
     },
     {
       title: 'Vai trò (Role / Chức vụ)',

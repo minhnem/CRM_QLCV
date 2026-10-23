@@ -38,13 +38,17 @@ const isFullAccessUser = async (user) => {
 // @access  Private
 export const getDepartments = async (req, res, next) => {
   try {
-    const isFullAccess = await isFullAccessUser(req.user);
+    const isFullAccess = req.isWorkspaceAdmin || (await isFullAccessUser(req.user));
     const userDeptId = req.user.departmentId ? req.user.departmentId.toString() : null;
+    const workspaceId = req.workspaceId || req.user.currentWorkspace;
+
+    const baseFilter = workspaceId ? { workspace: workspaceId } : {};
 
     // Thành viên thường chỉ lấy phòng ban họ làm trưởng phòng, thành viên, hoặc được gán departmentId
     const query = isFullAccess
-      ? {}
+      ? baseFilter
       : {
+          ...baseFilter,
           $or: [
             { head: req.user._id },
             { members: req.user._id },
@@ -100,12 +104,16 @@ export const getDepartments = async (req, res, next) => {
 // @access  Private
 export const getDepartmentTree = async (req, res, next) => {
   try {
-    const isFullAccess = await isFullAccessUser(req.user);
+    const isFullAccess = req.isWorkspaceAdmin || (await isFullAccessUser(req.user));
     const userDeptId = req.user.departmentId ? req.user.departmentId.toString() : null;
+    const workspaceId = req.workspaceId || req.user.currentWorkspace;
+
+    const baseFilter = workspaceId ? { workspace: workspaceId } : {};
 
     const query = isFullAccess
-      ? {}
+      ? baseFilter
       : {
+          ...baseFilter,
           $or: [
             { head: req.user._id },
             { members: req.user._id },
@@ -243,10 +251,12 @@ export const createDepartment = async (req, res, next) => {
       memberList.push(head);
     }
 
+    const workspaceId = req.workspaceId || req.user.currentWorkspace;
     const department = await Department.create({
       name,
       code,
       description,
+      workspace: workspaceId,
       parent: parent || null,
       head: head || null,
       members: memberList,
@@ -267,6 +277,7 @@ export const createDepartment = async (req, res, next) => {
       targetType: 'system',
       targetId: department._id.toString(),
       details: { name: department.name },
+      workspace: workspaceId,
     });
 
     const populated = await Department.findById(department._id)

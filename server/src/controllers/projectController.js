@@ -10,7 +10,12 @@ import { Department } from '../models/Department.js';
 export const getProjects = async (req, res, next) => {
   try {
     const { status, search, contract, department } = req.query;
+    const workspaceId = req.workspaceId || req.user.currentWorkspace;
     const conditions = [];
+
+    if (workspaceId) {
+      conditions.push({ workspace: workspaceId });
+    }
 
     if (status && status !== 'all') {
       conditions.push({ status });
@@ -86,10 +91,27 @@ export const getProjects = async (req, res, next) => {
       ];
 
       // Nếu user là Trưởng phòng của phòng ban phụ trách dự án, tự động có quyền xem dự án đó
-      const headDepts = await Department.find({ head: req.user._id }).select('_id');
+      const headDepts = await Department.find({
+        workspace: workspaceId,
+        head: req.user._id,
+      }).select('_id');
       if (headDepts.length > 0) {
         const headDeptIds = headDepts.map((d) => d._id);
         ownConditions.push({ departments: { $in: headDeptIds } });
+      }
+
+      // Thêm dự án mà user có công việc được giao
+      const userTaskProjects = await Task.find({
+        workspace: workspaceId,
+        $or: [
+          { assignee: req.user._id },
+          { members: req.user._id },
+          { reviewer: req.user._id },
+          { creator: req.user._id },
+        ],
+      }).distinct('project');
+      if (userTaskProjects.length > 0) {
+        ownConditions.push({ _id: { $in: userTaskProjects } });
       }
 
       conditions.push({ $or: ownConditions });
@@ -100,13 +122,17 @@ export const getProjects = async (req, res, next) => {
       }
       // Tìm các phòng ban mà user là thành viên hoặc trưởng phòng
       const userDepts = await Department.find({
+        workspace: workspaceId,
         $or: [
           { members: req.user._id },
           { head: req.user._id },
           ...(req.user.department ? [{ name: req.user.department }] : []),
         ],
-      }).select('_id');
-      userDepts.forEach((d) => userDeptIds.push(d._id));
+      }).select('_id parent');
+      userDepts.forEach((d) => {
+        userDeptIds.push(d._id);
+        if (d.parent) userDeptIds.push(d.parent);
+      });
 
       const deptConditions = [
         { owner: req.user._id },
@@ -117,16 +143,63 @@ export const getProjects = async (req, res, next) => {
       if (userDeptIds.length > 0) {
         deptConditions.push({ departments: { $in: userDeptIds } });
       }
+
+      const userTaskProjects = await Task.find({
+        workspace: workspaceId,
+        $or: [
+          { assignee: req.user._id },
+          { members: req.user._id },
+          { reviewer: req.user._id },
+          { creator: req.user._id },
+        ],
+      }).distinct('project');
+      if (userTaskProjects.length > 0) {
+        deptConditions.push({ _id: { $in: userTaskProjects } });
+      }
+
       conditions.push({ $or: deptConditions });
     } else if (req.user.role === 'member') {
-      conditions.push({
+      const userDeptIds = [];
+      if (req.user.departmentId) {
+        userDeptIds.push(req.user.departmentId);
+      }
+      const userDepts = await Department.find({
+        workspace: workspaceId,
         $or: [
-          { owner: req.user._id },
-          { manager: req.user._id },
-          { supervisor: req.user._id },
           { members: req.user._id },
+          { head: req.user._id },
+          ...(req.user.department ? [{ name: req.user.department }] : []),
         ],
+      }).select('_id parent');
+      userDepts.forEach((d) => {
+        userDeptIds.push(d._id);
+        if (d.parent) userDeptIds.push(d.parent);
       });
+
+      const userTaskProjects = await Task.find({
+        workspace: workspaceId,
+        $or: [
+          { assignee: req.user._id },
+          { members: req.user._id },
+          { reviewer: req.user._id },
+          { creator: req.user._id },
+        ],
+      }).distinct('project');
+
+      const memberConditions = [
+        { owner: req.user._id },
+        { manager: req.user._id },
+        { supervisor: req.user._id },
+        { members: req.user._id },
+      ];
+      if (userDeptIds.length > 0) {
+        memberConditions.push({ departments: { $in: userDeptIds } });
+      }
+      if (userTaskProjects.length > 0) {
+        memberConditions.push({ _id: { $in: userTaskProjects } });
+      }
+
+      conditions.push({ $or: memberConditions });
     }
 
     const query = conditions.length > 0 ? { $and: conditions } : {};
@@ -310,11 +383,13 @@ export const createProject = async (req, res, next) => {
     }
 
     const canViewVal = req.user.role === 'admin' || req.permissionScope?.canViewValue !== false;
+    const workspaceId = req.workspaceId || req.user.currentWorkspace;
 
     const project = await Project.create({
       name,
       code,
       description,
+      workspace: workspaceId,
       status: status || 'active',
       color: color || '#2563eb',
       owner: projectManager,
@@ -342,6 +417,7 @@ export const createProject = async (req, res, next) => {
       targetType: 'project',
       targetId: project._id.toString(),
       details: { projectName: project.name },
+      workspace: workspaceId,
     });
 
     const populatedProject = await Project.findById(project._id)

@@ -1304,16 +1304,23 @@ export const KanbanBoard = () => {
                 <Select
                   placeholder="Chọn Quản lý dự án"
                   showSearch
-                  optionFilterProp="children"
+                  allowClear
+                  optionFilterProp="filterText"
+                  optionLabelProp="label"
                 >
-                  {users.map((u) => {
-                    const dept = u.departmentId?.name || (typeof u.department === 'string' ? u.department : '') || 'Nhân sự';
-                    return (
-                      <Select.Option key={u._id} value={u._id}>
-                        👑 {u.name} ({dept})
-                      </Select.Option>
-                    );
-                  })}
+                  {users.map((u) => (
+                    <Select.Option
+                      key={u._id}
+                      value={u._id}
+                      label={`👑 ${u.name}`}
+                      filterText={`${u.name} ${u.email}`}
+                    >
+                      <div className="flex items-center justify-between py-0.5">
+                        <span className="font-medium text-slate-800">👑 {u.name}</span>
+                        <span className="text-xs text-slate-400">{u.email}</span>
+                      </div>
+                    </Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -1332,16 +1339,22 @@ export const KanbanBoard = () => {
                   placeholder="Chọn Người giám sát (nếu có)"
                   showSearch
                   allowClear
-                  optionFilterProp="children"
+                  optionFilterProp="filterText"
+                  optionLabelProp="label"
                 >
-                  {users.map((u) => {
-                    const dept = u.departmentId?.name || (typeof u.department === 'string' ? u.department : '') || 'Nhân sự';
-                    return (
-                      <Select.Option key={u._id} value={u._id}>
-                        🛡️ {u.name} ({dept})
-                      </Select.Option>
-                    );
-                  })}
+                  {users.map((u) => (
+                    <Select.Option
+                      key={u._id}
+                      value={u._id}
+                      label={`🛡️ ${u.name}`}
+                      filterText={`${u.name} ${u.email}`}
+                    >
+                      <div className="flex items-center justify-between py-0.5">
+                        <span className="font-medium text-slate-800">🛡️ {u.name}</span>
+                        <span className="text-xs text-slate-400">{u.email}</span>
+                      </div>
+                    </Select.Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -1415,19 +1428,23 @@ export const KanbanBoard = () => {
                   : 'Chọn thành viên'
               }
               allowClear
-              optionFilterProp="children"
+              showSearch
+              optionFilterProp="filterText"
+              optionLabelProp="label"
             >
-              {editProjectSelectableUsers.map((u) => {
-                const deptName =
-                  u.departmentId?.name ||
-                  (typeof u.department === 'string' ? u.department : '') ||
-                  'Nhân viên';
-                return (
-                  <Select.Option key={u._id} value={u._id}>
-                    {u.name} ({deptName})
-                  </Select.Option>
-                );
-              })}
+              {editProjectSelectableUsers.map((u) => (
+                <Select.Option
+                  key={u._id}
+                  value={u._id}
+                  label={u.name}
+                  filterText={`${u.name} ${u.email}`}
+                >
+                  <div className="flex items-center justify-between py-0.5">
+                    <span className="font-medium text-slate-800">{u.name}</span>
+                    <span className="text-xs text-slate-400">{u.email}</span>
+                  </div>
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
 
