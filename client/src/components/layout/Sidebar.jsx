@@ -148,7 +148,7 @@ export const Sidebar = ({ onOpenWorkspaceInvite }) => {
       key: '/settings',
       icon: <SettingOutlined style={{ fontSize: '17px' }} />,
       label: 'Cấu hình hệ thống',
-      show: can('settings', 'view') || user?.role === 'admin',
+      show: false, // Tạm thời ẩn theo yêu cầu người dùng
     },
   ];
 

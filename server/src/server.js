@@ -27,6 +27,7 @@ app.use(
 );
 app.use(
   cors({
+    //  origin: (origin, callback) => callback(null, true),
     origin: process.env.CLIENT_URL || 'http://localhost:5173',
     credentials: true,
   })

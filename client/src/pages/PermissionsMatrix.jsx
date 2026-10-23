@@ -93,6 +93,8 @@ const MODULE_CONFIGS = [
     hasViewValue: false,
     hasAssign: true, // Đổi vai trò
   },
+  /*
+  // Tạm thời ẩn phân hệ Cài đặt hệ thống theo yêu cầu
   {
     key: 'settings',
     name: 'Cài đặt hệ thống',
@@ -102,6 +104,7 @@ const MODULE_CONFIGS = [
     hasViewValue: false,
     hasAssign: false,
   },
+  */
 ];
 
 const VIEW_SCOPE_OPTIONS = [

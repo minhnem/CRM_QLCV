@@ -2,13 +2,40 @@ import { Task } from '../models/Task.js';
 import { Project } from '../models/Project.js';
 import { User } from '../models/User.js';
 import { ActivityLog } from '../models/ActivityLog.js';
+import { Contract } from '../models/Contract.js';
 import mongoose from 'mongoose';
 
-// @desc    Get dashboard metrics & statistics
+// @desc    Get dashboard metrics & statistics (Upgraded All-in-One)
 // @route   GET /api/dashboard/overview
 // @access  Private
 export const getDashboardOverview = async (req, res, next) => {
   try {
+    const userId = req.user?._id;
+    const userRole = req.user?.role;
+    const isAdmin = userRole === 'admin';
+    const workspaceId = req.user?.currentWorkspace || req.headers['x-workspace-id'];
+    const now = new Date();
+    const next30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const userObjectId = userId ? new mongoose.Types.ObjectId(userId) : null;
+
+    const contractFilter = workspaceId ? { workspace: workspaceId } : {};
+
+    // Tìm danh sách ID dự án mà nhân viên có công việc được giao
+    const taskProjectIds = userObjectId
+      ? await Task.find({ assignee: userObjectId }).distinct('project')
+      : [];
+
+    const myProjectCondition = userObjectId
+      ? {
+          $or: [
+            { _id: { $in: taskProjectIds } },
+            { members: userObjectId },
+            { manager: userObjectId },
+            { owner: userObjectId },
+          ],
+        }
+      : null;
+
     const [
       totalProjects,
       activeProjects,
@@ -17,9 +44,22 @@ export const getDashboardOverview = async (req, res, next) => {
       inProgressTasks,
       reviewTasks,
       doneTasks,
+      overdueTasksCount,
+      urgentTasksCount,
       totalUsers,
       recentActivities,
       upcomingTasks,
+      contractsSummary,
+      expiringContracts,
+      myAssignedTasks,
+      myReviewTasks,
+      myStatsAgg,
+      myProjectsCount,
+      myUrgentCount,
+      myUpcomingTasks,
+      myPriorityAgg,
+      activeProjectList,
+      priorityAgg,
     ] = await Promise.all([
       Project.countDocuments(),
       Project.countDocuments({ status: 'active' }),
@@ -28,20 +68,241 @@ export const getDashboardOverview = async (req, res, next) => {
       Task.countDocuments({ status: 'in_progress' }),
       Task.countDocuments({ status: 'review' }),
       Task.countDocuments({ status: 'done' }),
+      Task.countDocuments({
+        status: { $ne: 'done' },
+        dueDate: { $lt: now },
+      }),
+      Task.countDocuments({
+        status: { $ne: 'done' },
+        priority: 'urgent',
+      }),
       User.countDocuments({ isActive: true }),
       ActivityLog.find()
         .populate('user', 'name email avatar')
         .sort({ createdAt: -1 })
-        .limit(8),
+        .limit(7),
       Task.find({
         status: { $ne: 'done' },
-        dueDate: { $gte: new Date() },
+        dueDate: { $gte: now },
       })
         .populate('project', 'name code color')
         .populate('assignee', 'name avatar')
         .sort({ dueDate: 1 })
         .limit(5),
+
+      // Tổng hợp Hợp đồng & Deals (Chỉ Admin mới có quyền xem)
+      isAdmin
+        ? Contract.aggregate([
+            { $match: contractFilter },
+            {
+              $group: {
+                _id: null,
+                totalCount: { $sum: 1 },
+                activeCount: {
+                  $sum: { $cond: [{ $in: ['$stage', ['pending_sign', 'active', 'settlement']] }, 1, 0] },
+                },
+                totalValue: { $sum: '$totalValue' },
+                paidAmount: { $sum: '$paidAmount' },
+              },
+            },
+          ])
+        : Promise.resolve([]),
+
+      // Hợp đồng sắp hết hạn trong 30 ngày (Chỉ Admin)
+      isAdmin
+        ? Contract.find({
+            ...contractFilter,
+            endDate: { $gte: now, $lte: next30Days },
+            stage: { $nin: ['completed', 'cancelled'] },
+          })
+            .select('code title partner totalValue stage endDate remainingAmount')
+            .sort({ endDate: 1 })
+            .limit(4)
+        : Promise.resolve([]),
+
+      // Công việc được giao cho tôi
+      userId
+        ? Task.find({
+            assignee: userId,
+            status: { $ne: 'done' },
+          })
+            .populate('project', 'name code color')
+            .sort({ dueDate: 1, priority: -1 })
+            .limit(5)
+        : Promise.resolve([]),
+
+      // Công việc đang chờ tôi duyệt
+      userId
+        ? Task.find({
+            status: 'review',
+            $or: [{ reviewer: userId }, { creator: userId, reviewer: null }],
+          })
+            .populate('project', 'name code color')
+            .populate('assignee', 'name avatar')
+            .sort({ updatedAt: -1 })
+            .limit(5)
+        : Promise.resolve([]),
+
+      // Thống kê cá nhân
+      userObjectId
+        ? Task.aggregate([
+            { $match: { assignee: userObjectId } },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                done: { $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] } },
+                inProgress: { $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] } },
+                review: { $sum: { $cond: [{ $eq: ['$status', 'review'] }, 1, 0] } },
+                overdue: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ['$status', 'done'] },
+                          { $ifNull: ['$dueDate', false] },
+                          { $lt: ['$dueDate', now] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ])
+        : Promise.resolve([]),
+
+      // Số dự án nhân viên được tham gia (qua phân công task hoặc danh sách thành viên/quản lý)
+      myProjectCondition
+        ? Project.countDocuments(myProjectCondition)
+        : Promise.resolve(0),
+
+      // Số việc khẩn cấp của nhân viên
+      userObjectId
+        ? Task.countDocuments({
+            assignee: userObjectId,
+            status: { $ne: 'done' },
+            priority: 'urgent',
+          })
+        : Promise.resolve(0),
+
+      // Hạn chót sắp tới của riêng nhân viên
+      userObjectId
+        ? Task.find({
+            assignee: userObjectId,
+            status: { $ne: 'done' },
+            dueDate: { $gte: now },
+          })
+            .populate('project', 'name code color')
+            .sort({ dueDate: 1 })
+            .limit(5)
+        : Promise.resolve([]),
+
+      // Phân bổ ưu tiên các việc của riêng nhân viên
+      userObjectId
+        ? Task.aggregate([
+            { $match: { assignee: userObjectId, status: { $ne: 'done' } } },
+            {
+              $group: {
+                _id: '$priority',
+                count: { $sum: 1 },
+              },
+            },
+          ])
+        : Promise.resolve([]),
+
+      // Dự án đang chạy để tính tiến độ (Admin xem toàn cty, Nhân viên xem các dự án mình tham gia)
+      Project.find({
+        status: { $in: ['active', 'planning'] },
+        ...(!isAdmin && myProjectCondition ? myProjectCondition : {}),
+      })
+        .select('name code color status budget startDate endDate manager members')
+        .populate('manager', 'name avatar')
+        .populate('members', 'name avatar')
+        .sort({ updatedAt: -1 })
+        .limit(5),
+
+      // Phân bổ độ ưu tiên
+      Task.aggregate([
+        { $match: { status: { $ne: 'done' } } },
+        {
+          $group: {
+            _id: '$priority',
+            count: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
+
+    // Tính % hoàn thành từng dự án
+    const projectIds = activeProjectList.map((p) => p._id);
+    const projectTaskCounts = await Task.aggregate([
+      { $match: { project: { $in: projectIds } } },
+      {
+        $group: {
+          _id: '$project',
+          total: { $sum: 1 },
+          done: { $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    const projectStatsMap = {};
+    projectTaskCounts.forEach((pt) => {
+      projectStatsMap[pt._id.toString()] = {
+        total: pt.total,
+        done: pt.done,
+        percent: pt.total > 0 ? Math.round((pt.done / pt.total) * 100) : 0,
+      };
+    });
+
+    const projectsWithProgress = activeProjectList.map((p) => {
+      const stats = projectStatsMap[p._id.toString()] || { total: 0, done: 0, percent: 0 };
+      return {
+        ...p.toObject(),
+        taskStats: stats,
+      };
+    });
+
+    // Format Contracts
+    const cSummary = contractsSummary[0] || {
+      totalCount: 0,
+      activeCount: 0,
+      totalValue: 0,
+      paidAmount: 0,
+    };
+    const remainingAmount = Math.max(0, (cSummary.totalValue || 0) - (cSummary.paidAmount || 0));
+    const collectionRate =
+      cSummary.totalValue > 0 ? Math.round((cSummary.paidAmount / cSummary.totalValue) * 100) : 0;
+
+    // Format Priority
+    const priorityCounts = { urgent: 0, high: 0, medium: 0, low: 0 };
+    priorityAgg.forEach((p) => {
+      if (p._id && priorityCounts[p._id] !== undefined) {
+        priorityCounts[p._id] = p.count;
+      }
+    });
+
+    // Format My Priority
+    const myPriorityCounts = { urgent: 0, high: 0, medium: 0, low: 0 };
+    (myPriorityAgg || []).forEach((p) => {
+      if (p._id && myPriorityCounts[p._id] !== undefined) {
+        myPriorityCounts[p._id] = p.count;
+      }
+    });
+
+    // Format My Stats
+    const myStat = myStatsAgg[0] || { total: 0, done: 0, inProgress: 0, review: 0, overdue: 0 };
+    myStat.projectsCount = myProjectsCount || 0;
+    myStat.urgent = myUrgentCount || 0;
+    myStat.completionRate =
+      myStat.total > 0 ? Math.round((myStat.done / myStat.total) * 100) : 0;
+    myStat.todo = Math.max(
+      0,
+      (myStat.total || 0) - (myStat.done || 0) - (myStat.inProgress || 0) - (myStat.review || 0)
+    );
 
     res.json({
       success: true,
@@ -49,6 +310,7 @@ export const getDashboardOverview = async (req, res, next) => {
         projects: {
           total: totalProjects,
           active: activeProjects,
+          topList: projectsWithProgress,
         },
         tasks: {
           total: totalTasks,
@@ -56,7 +318,26 @@ export const getDashboardOverview = async (req, res, next) => {
           inProgress: inProgressTasks,
           review: reviewTasks,
           done: doneTasks,
+          overdue: overdueTasksCount,
+          urgent: urgentTasksCount,
           completionRate: totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0,
+          priorityDistribution: priorityCounts,
+        },
+        contracts: {
+          total: cSummary.totalCount,
+          active: cSummary.activeCount,
+          totalValue: cSummary.totalValue,
+          paidAmount: cSummary.paidAmount,
+          remainingAmount,
+          collectionRate,
+          expiringSoon: expiringContracts,
+        },
+        personal: {
+          stats: myStat,
+          assignedTasks: myAssignedTasks,
+          reviewTasks: myReviewTasks,
+          upcomingTasks: myUpcomingTasks,
+          priorityDistribution: myPriorityCounts,
         },
         users: {
           total: totalUsers,

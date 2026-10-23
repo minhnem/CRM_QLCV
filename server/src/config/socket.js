@@ -5,6 +5,7 @@ let io = null;
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
+      //  origin: (origin, callback) => callback(null, true),
       origin: process.env.CLIENT_URL || 'http://localhost:5173',
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       credentials: true,
