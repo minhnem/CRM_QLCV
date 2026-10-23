@@ -1,0 +1,23 @@
+# ==============================================================================
+# CẤU HÌNH .htaccess CHO CYBERPANEL (OPENLITESPEED)
+# Đặt file này vào thư mục: /home/crm.truebrand.com.vn/public_html/.htaccess
+# ==============================================================================
+
+RewriteEngine On
+
+# 1. Chuyển tiếp kết nối Real-time Socket.IO sang Backend Node.js (cổng 5000)
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteCond %{HTTP:Connection} upgrade [NC]
+RewriteRule ^socket\.io/(.*) ws://127.0.0.1:5000/socket.io/$1 [P,L]
+
+# 2. Chuyển tiếp RESTful API sang Backend Node.js
+RewriteRule ^api/(.*) http://127.0.0.1:5000/api/$1 [P,L]
+
+# 3. Chuyển tiếp thư mục Uploads sang Backend Node.js
+RewriteRule ^uploads/(.*) http://127.0.0.1:5000/uploads/$1 [P,L]
+
+# 4. Cấu hình Single Page Application (React Router SPA)
+# Giúp người dùng khi F5 hoặc truy cập trực tiếp các trang (VD: /tasks, /projects) không bị lỗi 404
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]
