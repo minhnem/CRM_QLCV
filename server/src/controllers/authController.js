@@ -59,7 +59,7 @@ export const register = async (req, res, next) => {
       email: cleanEmail,
       password,
       role: assignedRole,
-      department: department || 'Engineering',
+      department: department ? department.trim() : '',
     });
 
     const token = signToken({ id: user._id, role: user.role });
@@ -302,7 +302,7 @@ export const googleAuth = async (req, res, next) => {
         avatar: picture || '',
         authType: 'google',
         role: 'member',
-        department: 'Engineering',
+        department: '',
       });
     }
 

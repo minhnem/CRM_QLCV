@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Card, Form, Input, Select, Button, Alert, Typography, message } from 'antd';
+import { Card, Form, Input, Button, Alert, Typography, message } from 'antd';
 import {
   UserOutlined,
   MailOutlined,
   LockOutlined,
-  BankOutlined,
   ArrowRightOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
@@ -32,7 +31,6 @@ export const Register = () => {
         name: values.name,
         email: values.email,
         password: values.password,
-        department: values.department,
       });
       message.success('Đăng ký tài khoản thành công! Hãy tạo hoặc tham gia Không gian làm việc.');
       navigate('/workspace/onboarding');
@@ -107,7 +105,6 @@ export const Register = () => {
           form={form}
           layout="vertical"
           onFinish={handleRegister}
-          initialValues={{ department: 'Kỹ Thuật' }}
         >
           <Form.Item
             label="Họ và tên"
@@ -134,15 +131,6 @@ export const Register = () => {
               placeholder="user@crm.local"
               size="large"
             />
-          </Form.Item>
-
-          <Form.Item label="Phòng ban trực thuộc" name="department">
-            <Select size="large">
-              <Select.Option value="Kỹ Thuật">Phòng Kỹ Thuật (Engineering)</Select.Option>
-              <Select.Option value="Phòng Dự Án">Phòng Dự Án (Project Management)</Select.Option>
-              <Select.Option value="Kinh Doanh">Phòng Kinh Doanh (Sales & CRM)</Select.Option>
-              <Select.Option value="Ban Giám Đốc">Ban Giám Đốc (Board)</Select.Option>
-            </Select>
           </Form.Item>
 
           <Form.Item
